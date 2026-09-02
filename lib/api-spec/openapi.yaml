@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: videos
+    description: Video scene extraction operations
 paths:
   /healthz:
     get:
@@ -24,7 +26,107 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /videos/process:
+    post:
+      operationId: processVideo
+      tags: [videos]
+      summary: Detect scenes and extract representative frames
+      description: Accepts an MP4, MOV, or WebM video and returns a visual scene breakdown using frames extracted directly from the source video.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/VideoUploadInput"
+      responses:
+        "200":
+          description: Processed video breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoBreakdown"
+        "400":
+          description: Unsupported or invalid video upload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Video could not be processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /videos/{videoId}:
+    get:
+      operationId: getVideoBreakdown
+      tags: [videos]
+      summary: Get a processed video breakdown
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: Processed video breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoBreakdown"
+        "404":
+          description: Breakdown not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /videos/{videoId}/frames.zip:
+    get:
+      operationId: downloadFrames
+      tags: [videos]
+      summary: Download all extracted scene frames
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: ZIP archive of extracted frames
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Breakdown not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /videos/{videoId}/storyboard.jpg:
+    get:
+      operationId: downloadStoryboard
+      tags: [videos]
+      summary: Download a storyboard image
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: Chronological storyboard image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Breakdown not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  parameters:
+    VideoId:
+      name: videoId
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +135,75 @@ components:
           type: string
       required:
         - status
+    VideoUploadInput:
+      type: object
+      required:
+        - video
+      properties:
+        video:
+          type: string
+          format: binary
+          description: Original video file in MP4, MOV, or WebM format.
+    SceneFrame:
+      type: object
+      required:
+        - id
+        - index
+        - timestamp
+        - timestampLabel
+        - imageUrl
+      properties:
+        id:
+          type: string
+        index:
+          type: number
+          minimum: 1
+        timestamp:
+          type: number
+          format: double
+          minimum: 0
+        timestampLabel:
+          type: string
+        imageUrl:
+          type: string
+        filename:
+          type: string
+    VideoBreakdown:
+      type: object
+      required:
+        - id
+        - filename
+        - duration
+        - width
+        - height
+        - originalVideoUrl
+        - scenes
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        duration:
+          type: number
+          format: double
+          minimum: 0
+        width:
+          type: number
+          minimum: 1
+        height:
+          type: number
+          minimum: 1
+        originalVideoUrl:
+          type: string
+        scenes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SceneFrame"
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
 

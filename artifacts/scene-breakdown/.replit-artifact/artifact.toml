@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SceneBreakdown"
+description = "A focused video storyboard extractor that detects meaningful scene changes and presents high-quality frames pulled directly from the original footage, with timestamp-linked playback and downloads."
+version = "1.0.0"
+id = "artifacts/scene-breakdown"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21433
+
+[services.development]
+run = "pnpm --filter @workspace/scene-breakdown run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/scene-breakdown", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/scene-breakdown/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21433"
+BASE_PATH = "/"
