@@ -1,8 +1,9 @@
-import { useRef, useState, type DragEvent, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ChangeEvent } from 'react';
 import { useLocation } from 'wouter';
 import {
   ArrowLeft,
   ArrowUpRight,
+  Bookmark,
   Check,
   Download,
   Film,
@@ -30,6 +31,11 @@ import {
   type SceneFrame,
   type VideoBreakdown,
 } from '@workspace/api-client-react';
+import {
+  isBreakdownSaved,
+  saveBreakdown,
+  type SavedBreakdown,
+} from '@/lib/saved-breakdowns';
 
 type ProcessError = { error?: string };
 
@@ -80,7 +86,7 @@ function BrandMark() {
   );
 }
 
-function AppHeader({ compact = false }: { compact?: boolean }) {
+export function AppHeader({ compact = false }: { compact?: boolean }) {
   const [, setLocation] = useLocation();
   return (
     <header className={`app-header ${compact ? 'app-header-compact' : ''}`}>
@@ -93,9 +99,12 @@ function AppHeader({ compact = false }: { compact?: boolean }) {
       >
         <BrandMark />
       </button>
-      <div className="header-meta">
-        <span className="status-dot" />
-        <span>LOCAL STUDIO</span>
+      <div className="header-actions">
+        <button type="button" className="saved-link" onClick={() => setLocation('/saved')}><Bookmark size={14} /> Saved</button>
+        <div className="header-meta">
+          <span className="status-dot" />
+          <span>LOCAL STUDIO</span>
+        </div>
       </div>
     </header>
   );
@@ -324,7 +333,7 @@ function SceneCard({ scene, selected, onSelect }: { scene: SceneFrame; selected:
   );
 }
 
-function VideoStage({ breakdown, selectedScene }: { breakdown: VideoBreakdown; selectedScene: SceneFrame | null }) {
+function VideoStage({ breakdown, selectedScene, storyboardUrl }: { breakdown: VideoBreakdown; selectedScene: SceneFrame | null; storyboardUrl?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekToScene = (scene: SceneFrame) => {
     if (!videoRef.current) return;
@@ -334,11 +343,15 @@ function VideoStage({ breakdown, selectedScene }: { breakdown: VideoBreakdown; s
   return (
     <div className="video-stage-wrap">
       <div className="video-stage">
-        <video ref={videoRef} src={breakdown.originalVideoUrl} controls playsInline poster={selectedScene?.imageUrl} data-testid="video-original-footage">
-          Your browser does not support video playback.
-        </video>
-        <div className="video-stage-label"><span className="status-dot" /> SOURCE / ORIGINAL</div>
-        {selectedScene && (
+        {storyboardUrl ? (
+          <img className="saved-storyboard-preview" src={storyboardUrl} alt={`Saved storyboard for ${breakdown.filename}`} data-testid="img-saved-storyboard" />
+        ) : (
+          <video ref={videoRef} src={breakdown.originalVideoUrl} controls playsInline poster={selectedScene?.imageUrl} data-testid="video-original-footage">
+            Your browser does not support video playback.
+          </video>
+        )}
+        <div className="video-stage-label"><span className="status-dot" /> {storyboardUrl ? 'SAVED / STORYBOARD' : 'SOURCE / ORIGINAL'}</div>
+        {selectedScene && !storyboardUrl && (
           <button type="button" className="jump-to-frame" onClick={() => seekToScene(selectedScene)} data-testid="button-jump-to-scene">
             <Play size={13} fill="currentColor" /> Jump to {selectedScene.timestampLabel}
           </button>
@@ -352,13 +365,15 @@ function VideoStage({ breakdown, selectedScene }: { breakdown: VideoBreakdown; s
   );
 }
 
-export function BreakdownPage({ videoId }: { videoId: string }) {
+export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; savedBreakdown?: SavedBreakdown }) {
   const [, setLocation] = useLocation();
   const [selectedScene, setSelectedScene] = useState<SceneFrame | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'storyboard'>('grid');
   const [downloadError, setDownloadError] = useState('');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>(savedBreakdown ? 'saved' : 'idle');
+  const [saveMessage, setSaveMessage] = useState('');
   const breakdownQuery = useGetVideoBreakdown(videoId, {
-    query: { enabled: Boolean(videoId), queryKey: getGetVideoBreakdownQueryKey(videoId) },
+    query: { enabled: Boolean(videoId) && !savedBreakdown, queryKey: getGetVideoBreakdownQueryKey(videoId) },
   });
   const framesQuery = useDownloadFrames(videoId, {
     query: { enabled: false, queryKey: getDownloadFramesQueryKey(videoId) },
@@ -366,12 +381,24 @@ export function BreakdownPage({ videoId }: { videoId: string }) {
   const storyboardQuery = useDownloadStoryboard(videoId, {
     query: { enabled: false, queryKey: getDownloadStoryboardQueryKey(videoId) },
   });
-  const breakdown = breakdownQuery.data;
+  const breakdown = savedBreakdown ?? breakdownQuery.data;
+
+  useEffect(() => {
+    if (!breakdown || savedBreakdown) return;
+    isBreakdownSaved(breakdown.id)
+      .then((saved) => setSaveState(saved ? 'saved' : 'idle'))
+      .catch(() => undefined);
+  }, [breakdown, savedBreakdown]);
 
   const handleSceneSelect = (scene: SceneFrame) => setSelectedScene(scene);
   const handleDownloadFrames = async () => {
     setDownloadError('');
     try {
+      if (savedBreakdown) {
+        const result = await fetch(savedBreakdown.framesZipUrl);
+        downloadBlob(await result.blob(), `${breakdown?.filename ?? 'scene-breakdown'}-frames.zip`);
+        return;
+      }
       const result = await framesQuery.refetch();
       if (result.data) downloadBlob(result.data, `${breakdown?.filename ?? 'scene-breakdown'}-frames.zip`);
     } catch {
@@ -381,10 +408,28 @@ export function BreakdownPage({ videoId }: { videoId: string }) {
   const handleDownloadStoryboard = async () => {
     setDownloadError('');
     try {
+      if (savedBreakdown) {
+        const result = await fetch(savedBreakdown.storyboardUrl);
+        downloadBlob(await result.blob(), `${breakdown?.filename ?? 'scene-breakdown'}-storyboard.jpg`);
+        return;
+      }
       const result = await storyboardQuery.refetch();
       if (result.data) downloadBlob(result.data, `${breakdown?.filename ?? 'scene-breakdown'}-storyboard.jpg`);
     } catch {
       setDownloadError('The storyboard could not be prepared right now.');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!breakdown || savedBreakdown || saveState === 'saving' || saveState === 'saved') return;
+    setSaveState('saving');
+    setSaveMessage('');
+    try {
+      await saveBreakdown(breakdown);
+      setSaveState('saved');
+    } catch (error) {
+      setSaveState('error');
+      setSaveMessage(error instanceof Error ? error.message : 'The breakdown could not be saved.');
     }
   };
 
@@ -416,6 +461,9 @@ export function BreakdownPage({ videoId }: { videoId: string }) {
             <h1 className="font-display breakdown-title" data-testid="text-breakdown-filename">{breakdown.filename}</h1>
           </div>
           <div className="breakdown-actions">
+            {!savedBreakdown && <button type="button" className="secondary-action" onClick={() => void handleSave()} disabled={saveState === 'saving'} data-testid="button-save-breakdown">
+              {saveState === 'saving' ? <LoaderCircle className="animate-spin" size={15} /> : <Bookmark size={15} />} {saveState === 'saved' ? 'Saved' : 'Save'}
+            </button>}
             <button type="button" className="secondary-action" onClick={handleDownloadStoryboard} disabled={storyboardQuery.isFetching} data-testid="button-download-storyboard">
               {storyboardQuery.isFetching ? <LoaderCircle className="animate-spin" size={15} /> : <ImageDown size={15} />} Storyboard
             </button>
@@ -424,6 +472,7 @@ export function BreakdownPage({ videoId }: { videoId: string }) {
             </button>
           </div>
         </div>
+        {saveMessage && <div className="error-message" role="alert" data-testid="status-save-error"><span><X size={14} /></span>{saveMessage}</div>}
 
         <div className="breakdown-overview">
           <div className="overview-stat"><span className="stat-label">DURATION</span><strong data-testid="text-breakdown-duration">{formatDuration(breakdown.duration)}</strong></div>
@@ -434,7 +483,7 @@ export function BreakdownPage({ videoId }: { videoId: string }) {
         {downloadError && <div className="error-message" role="alert" data-testid="status-download-error"><span><X size={14} /></span>{downloadError}</div>}
 
         <div className="review-layout">
-          <VideoStage breakdown={breakdown} selectedScene={activeScene} />
+          <VideoStage breakdown={breakdown} selectedScene={activeScene} storyboardUrl={savedBreakdown?.storyboardUrl} />
           <aside className="inspector-panel">
             <div className="inspector-heading">
               <div><span className="eyebrow"><span className="eyebrow-line" /> SCENE MAP</span><h2 className="font-display">The visual rhythm</h2></div>

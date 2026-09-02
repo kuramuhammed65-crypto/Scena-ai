@@ -175,6 +175,8 @@ async function extractFrame(inputPath: string, outputPath: string, timestamp: nu
       "-q:v",
       "2",
       "-y",
+      "-vf",
+      "scale=in_range=auto:out_range=full,format=yuvj420p",
       outputPath,
     ],
     { maxBuffer: 2 * 1024 * 1024 },

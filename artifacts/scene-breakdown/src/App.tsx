@@ -4,6 +4,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { BreakdownPage, UploadPage } from '@/components/scene-breakdown';
+import { SavedBreakdownPage, SavedBreakdownsPage } from '@/components/saved-breakdowns-page';
 import NotFound from '@/pages/not-found';
 import {
   Route,
@@ -21,6 +22,10 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={UploadPage} />
+        <Route path="/saved" component={SavedBreakdownsPage} />
+        <Route path="/saved/:savedId">
+          {(params) => <SavedBreakdownPage savedId={params.savedId} />}
+        </Route>
         <Route path="/breakdown/:videoId">
           {(params) => <BreakdownPage videoId={params.videoId} />}
         </Route>
