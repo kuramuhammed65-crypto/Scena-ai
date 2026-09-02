@@ -4,8 +4,10 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import ffmpegPath from "ffmpeg-static";
 
 const execFile = promisify(execFileCallback);
+const ffmpegBinary = ffmpegPath ?? "ffmpeg";
 
 export type SceneFrame = {
   id: string;
@@ -90,38 +92,36 @@ function parseMultipart(contentType: string | undefined, body: Buffer) {
 }
 
 async function probeVideo(inputPath: string) {
-  const { stdout } = await execFile(
-    "ffprobe",
-    [
-      "-v",
-      "error",
-      "-select_streams",
-      "v:0",
-      "-show_entries",
-      "stream=width,height,duration:format=duration",
-      "-of",
-      "json",
-      inputPath,
-    ],
-    { maxBuffer: 2 * 1024 * 1024 },
-  );
-  const parsed = JSON.parse(stdout) as {
-    streams?: Array<{ width?: number; height?: number; duration?: string }>;
-    format?: { duration?: string };
-  };
-  const stream = parsed.streams?.[0];
-  const duration = Number(stream?.duration ?? parsed.format?.duration ?? 0);
-  if (!stream?.width || !stream.height || !Number.isFinite(duration) || duration <= 0) {
+  let stderr = "";
+  try {
+    const result = await execFile(
+      ffmpegBinary,
+      ["-hide_banner", "-i", inputPath, "-frames:v", "1", "-f", "null", "-"],
+      { maxBuffer: 4 * 1024 * 1024 },
+    );
+    stderr = result.stderr;
+  } catch (error) {
+    stderr = (error as { stderr?: string }).stderr ?? "";
+  }
+
+  const durationMatch = stderr.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/);
+  const sizeMatch = stderr.match(/,\s*(\d{2,5})x(\d{2,5})(?:[,\s]|$)/);
+  const duration = durationMatch
+    ? Number(durationMatch[1]) * 3600 + Number(durationMatch[2]) * 60 + Number(durationMatch[3])
+    : 0;
+  const width = sizeMatch ? Number(sizeMatch[1]) : 0;
+  const height = sizeMatch ? Number(sizeMatch[2]) : 0;
+  if (!width || !height || !Number.isFinite(duration) || duration <= 0) {
     throw new Error("This video could not be read.");
   }
-  return { width: stream.width, height: stream.height, duration };
+  return { width, height, duration };
 }
 
 async function findSceneChanges(inputPath: string, duration: number) {
   let stderr = "";
   try {
     const result = await execFile(
-      "ffmpeg",
+      ffmpegBinary,
       [
         "-hide_banner",
         "-loglevel",
@@ -161,7 +161,7 @@ async function findSceneChanges(inputPath: string, duration: number) {
 
 async function extractFrame(inputPath: string, outputPath: string, timestamp: number) {
   await execFile(
-    "ffmpeg",
+    ffmpegBinary,
     [
       "-hide_banner",
       "-loglevel",
@@ -185,7 +185,7 @@ async function createStoryboard(directory: string, sceneCount: number, outputPat
   const columns = Math.min(3, sceneCount);
   const rows = Math.max(1, Math.ceil(sceneCount / columns));
   await execFile(
-    "ffmpeg",
+    ffmpegBinary,
     [
       "-hide_banner",
       "-loglevel",
