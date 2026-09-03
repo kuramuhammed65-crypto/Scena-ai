@@ -1,6 +1,6 @@
 FROM node:20-slim
 RUN apt-get update && apt-get install -y zip && rm -rf /var/lib/apt/lists/*
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10
 WORKDIR /app
 COPY . .
 RUN pnpm install
