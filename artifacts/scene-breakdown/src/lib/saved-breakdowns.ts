@@ -9,13 +9,11 @@ type SavedBreakdownRecord = {
   breakdown: VideoBreakdown;
   scenes: Array<{ scene: SceneFrame; image: Blob }>;
   storyboard: Blob;
-  framesZip: Blob;
   savedAt: number;
 };
 
 export type SavedBreakdown = VideoBreakdown & {
   storyboardUrl: string;
-  framesZipUrl: string;
   savedAt: number;
 };
 
@@ -70,7 +68,7 @@ async function fetchBlob(url: string, description: string) {
 }
 
 export async function saveBreakdown(breakdown: VideoBreakdown) {
-  const [scenes, storyboard, framesZip] = await Promise.all([
+  const [scenes, storyboard] = await Promise.all([
     Promise.all(
       breakdown.scenes.map(async (scene) => ({
         scene,
@@ -78,7 +76,6 @@ export async function saveBreakdown(breakdown: VideoBreakdown) {
       })),
     ),
     fetchBlob(`/api/videos/${breakdown.id}/storyboard.jpg`, 'storyboard'),
-    fetchBlob(`/api/videos/${breakdown.id}/frames.zip`, 'frame archive'),
   ]);
 
   const database = await openDatabase();
@@ -86,10 +83,9 @@ export async function saveBreakdown(breakdown: VideoBreakdown) {
     const transaction = database.transaction(storeName, 'readwrite');
     transaction.objectStore(storeName).put({
       id: breakdown.id,
-      breakdown,
+      breakdown: { ...breakdown, originalVideoUrl: '' },
       scenes,
       storyboard,
-      framesZip,
       savedAt: Date.now(),
     } satisfies SavedBreakdownRecord);
     await transactionComplete(transaction);
@@ -135,7 +131,6 @@ export async function loadSavedBreakdown(id: string): Promise<SavedBreakdown | n
       originalVideoUrl: '',
       scenes: sceneUrls,
       storyboardUrl: URL.createObjectURL(record.storyboard),
-      framesZipUrl: URL.createObjectURL(record.framesZip),
       savedAt: record.savedAt,
     };
   } finally {
@@ -169,5 +164,4 @@ export async function deleteSavedBreakdown(id: string) {
 export function releaseSavedBreakdown(breakdown: SavedBreakdown) {
   breakdown.scenes.forEach((scene) => URL.revokeObjectURL(scene.imageUrl));
   URL.revokeObjectURL(breakdown.storyboardUrl);
-  URL.revokeObjectURL(breakdown.framesZipUrl);
 }

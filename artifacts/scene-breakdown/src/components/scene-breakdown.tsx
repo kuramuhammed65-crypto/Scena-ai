@@ -10,6 +10,7 @@ import {
   FileVideo,
   Gauge,
   Grid2X2,
+  Grid3X3,
   ImageDown,
   LoaderCircle,
   Play,
@@ -36,8 +37,10 @@ import {
   saveBreakdown,
   type SavedBreakdown,
 } from '@/lib/saved-breakdowns';
+import { StoryPanel } from '@/components/story-panel';
 
 type ProcessError = { error?: string };
+type SceneViewMode = 'grid' | 'storyboard' | 'contact-sheet';
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -368,7 +371,7 @@ function VideoStage({ breakdown, selectedScene, storyboardUrl }: { breakdown: Vi
 export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; savedBreakdown?: SavedBreakdown }) {
   const [, setLocation] = useLocation();
   const [selectedScene, setSelectedScene] = useState<SceneFrame | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'storyboard'>('grid');
+  const [viewMode, setViewMode] = useState<SceneViewMode>('grid');
   const [downloadError, setDownloadError] = useState('');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>(savedBreakdown ? 'saved' : 'idle');
   const [saveMessage, setSaveMessage] = useState('');
@@ -395,8 +398,7 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
     setDownloadError('');
     try {
       if (savedBreakdown) {
-        const result = await fetch(savedBreakdown.framesZipUrl);
-        downloadBlob(await result.blob(), `${breakdown?.filename ?? 'scene-breakdown'}-frames.zip`);
+        setDownloadError('Frame archives are not included in saved breakdowns.');
         return;
       }
       const result = await framesQuery.refetch();
@@ -467,9 +469,9 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
             <button type="button" className="secondary-action" onClick={handleDownloadStoryboard} disabled={storyboardQuery.isFetching} data-testid="button-download-storyboard">
               {storyboardQuery.isFetching ? <LoaderCircle className="animate-spin" size={15} /> : <ImageDown size={15} />} Storyboard
             </button>
-            <button type="button" className="primary-action small-action" onClick={handleDownloadFrames} disabled={framesQuery.isFetching} data-testid="button-download-frames">
+            {!savedBreakdown && <button type="button" className="primary-action small-action" onClick={handleDownloadFrames} disabled={framesQuery.isFetching} data-testid="button-download-frames">
               {framesQuery.isFetching ? <LoaderCircle className="animate-spin" size={15} /> : <Download size={15} />} Export frames
-            </button>
+            </button>}
           </div>
         </div>
         {saveMessage && <div className="error-message" role="alert" data-testid="status-save-error"><span><X size={14} /></span>{saveMessage}</div>}
@@ -482,7 +484,7 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
         </div>
         {downloadError && <div className="error-message" role="alert" data-testid="status-download-error"><span><X size={14} /></span>{downloadError}</div>}
 
-        <div className="review-layout">
+        <div className={`review-layout ${viewMode === 'contact-sheet' ? 'review-layout-contact-sheet' : ''}`}>
           <VideoStage breakdown={breakdown} selectedScene={activeScene} storyboardUrl={savedBreakdown?.storyboardUrl} />
           <aside className="inspector-panel">
             <div className="inspector-heading">
@@ -509,6 +511,16 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
                   >
                     <Rows3 size={13} /> Storyboard
                   </button>
+                  <button
+                    type="button"
+                    className={viewMode === 'contact-sheet' ? 'is-active' : ''}
+                    onClick={() => setViewMode('contact-sheet')}
+                    aria-label="Story panel grid contact sheet view"
+                    aria-pressed={viewMode === 'contact-sheet'}
+                    data-testid="button-contact-sheet-view"
+                  >
+                    <Grid3X3 size={13} /> Story panel
+                  </button>
                 </div>
                 <span className="scene-count-badge" data-testid="text-scene-count-badge">{scenes.length}</span>
               </div>
@@ -519,6 +531,8 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
                 <strong>No scene changes found</strong>
                 <p>This footage reads as one continuous visual moment.</p>
               </div>
+            ) : viewMode === 'contact-sheet' ? (
+              <StoryPanel scenes={scenes} selectedScene={activeScene} onSelect={handleSceneSelect} />
             ) : (
               <div className={`scene-list scene-list-${viewMode}`} data-testid="list-scenes">
                 {scenes.map((scene) => <SceneCard key={scene.id} scene={scene} selected={activeScene?.id === scene.id} onSelect={handleSceneSelect} />)}

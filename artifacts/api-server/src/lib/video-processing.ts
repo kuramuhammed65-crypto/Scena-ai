@@ -192,10 +192,10 @@ async function createStoryboard(directory: string, sceneCount: number, outputPat
       "-hide_banner",
       "-loglevel",
       "error",
-      "-pattern_type",
-      "glob",
+      "-start_number",
+      "1",
       "-i",
-      path.join(directory, "scene-*.jpg"),
+      path.join(directory, "scene-%d.jpg"),
       "-vf",
       `scale=480:-2,tile=${columns}x${rows}:padding=24:margin=24`,
       "-frames:v",
@@ -232,7 +232,7 @@ export async function processVideoUpload(contentType: string | undefined, body: 
   try {
     const metadata = await probeVideo(originalPath);
     const changes = await findSceneChanges(originalPath, metadata.duration);
-    const starts = [0, ...changes];
+    const starts = [0, ...changes.filter((time) => time > 0).sort((left, right) => left - right)];
     const scenes: SceneFrame[] = [];
 
     for (let index = 0; index < starts.length; index += 1) {

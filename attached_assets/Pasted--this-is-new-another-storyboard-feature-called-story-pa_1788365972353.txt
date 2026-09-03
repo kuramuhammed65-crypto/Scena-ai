@@ -1,0 +1,40 @@
+
+
+this is new another storyboard feature called story panel please ,don't touch existing ones ,please don't touch anything in the app cuz I alove it ,so keep them aside and build this new one 
+
+
+The current storyboard layout is wrong. Do not modify or remove the existing storyboard layout. Add a completely separate new “Grid / Contact Sheet” storyboard layout option.
+The new layout must be a professional horizontal storyboard/contact sheet, NOT a long narrow vertical arrangement.
+
+Requirements:
+
+Use exactly 3 columns per row.
+Every scene must occupy one fixed-size rectangular panel.
+All panels must have identical dimensions.
+Add a clearly visible border around every panel.
+Keep identical horizontal and vertical spacing between panels.
+
+Preserve exact scene order: Scene 1, Scene 2, Scene 3, Scene 4, etc. Never reorder scenes.
+Put each original scene image completely inside its panel using contain, not cover.
+NEVER crop any part of the original image.
+NEVER stretch, squash, rotate, or distort the original image.
+
+If the source image has a different aspect ratio from the panel, leave appropriate empty space inside the panel rather than cropping the image.
+Do not modify the original scene images or their resolution.
+Do not add captions, descriptions, transcripts, prompts, or other text.
+
+Only use a simple small scene number such as 1, 2, 3 if scene numbering is enabled.
+
+The generated storyboard should be a clean, wide professional contact sheet with multiple rows of 3 panels.
+
+Do not allow panels to overlap, merge, become irregular, or change size depending on the image.
+
+The storyboard canvas should automatically expand vertically according to the number of scenes while keeping the 3-column structure fixed.
+
+Keep this implementation completely isolated from the existing storyboard and existing video/scene-breakdown code.
+Do not refactor or rewrite working features.
+
+Visual goal: Think of a professional film/video storyboard contact sheet: a clean grid of equal rectangular frames containing the complete original frames, rather than a collage of differently sized vertical images.
+Most important: the PANEL determines the layout. The SOURCE IMAGE must never determine the panel dimensions.
+
+Do not use the source image's 9:16 aspect ratio as the panel's aspect ratio. The panel must remain a consistent rectangular storyboard frame. The 9:16 source image is simply fitted inside that frame.
