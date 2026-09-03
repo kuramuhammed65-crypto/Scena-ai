@@ -23,10 +23,8 @@ import {
 } from 'lucide-react';
 import {
   getDownloadFramesQueryKey,
-  getDownloadStoryboardQueryKey,
   getGetVideoBreakdownQueryKey,
   useDownloadFrames,
-  useDownloadStoryboard,
   useGetVideoBreakdown,
   useProcessVideo,
   type SceneFrame,
@@ -38,6 +36,7 @@ import {
   type SavedBreakdown,
 } from '@/lib/saved-breakdowns';
 import { StoryPanel } from '@/components/story-panel';
+import { downloadContactSheet } from '@/lib/storyboard-download';
 
 type ProcessError = { error?: string };
 type SceneViewMode = 'grid' | 'storyboard' | 'contact-sheet';
@@ -336,6 +335,51 @@ function SceneCard({ scene, selected, onSelect }: { scene: SceneFrame; selected:
   );
 }
 
+function StoryboardSceneCard({
+  scene,
+  selected,
+  onSelect,
+  onDownload,
+}: {
+  scene: SceneFrame;
+  selected: boolean;
+  onSelect: (scene: SceneFrame) => void;
+  onDownload: (scene: SceneFrame) => void;
+}) {
+  return (
+    <article className={`scene-card storyboard-scene-card ${selected ? 'is-selected' : ''}`}>
+      <button
+        type="button"
+        className="storyboard-scene-select"
+        onClick={() => onSelect(scene)}
+        data-testid={`button-storyboard-scene-${scene.id}`}
+        aria-label={`Scene ${scene.index} at ${scene.timestampLabel}`}
+      >
+        <div className="scene-image-wrap">
+          <img src={scene.imageUrl} alt={`Frame from ${scene.timestampLabel}`} data-testid={`img-storyboard-scene-${scene.id}`} />
+          <span className="scene-index">{String(scene.index).padStart(2, '0')}</span>
+          <span className="scene-play"><Play size={12} fill="currentColor" /></span>
+        </div>
+      </button>
+      <div className="storyboard-scene-footer">
+        <div className="scene-card-meta">
+          <span className="scene-time">{scene.timestampLabel}</span>
+          <span className="scene-file">{scene.filename ?? `frame_${String(scene.index).padStart(3, '0')}`}</span>
+        </div>
+        <button
+          type="button"
+          className="storyboard-scene-download"
+          onClick={() => onDownload(scene)}
+          aria-label={`Download scene ${scene.index}`}
+          data-testid={`button-download-scene-${scene.id}`}
+        >
+          <Download size={13} /> Download
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function VideoStage({ breakdown, selectedScene, storyboardUrl }: { breakdown: VideoBreakdown; selectedScene: SceneFrame | null; storyboardUrl?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const seekToScene = (scene: SceneFrame) => {
@@ -373,6 +417,7 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
   const [selectedScene, setSelectedScene] = useState<SceneFrame | null>(null);
   const [viewMode, setViewMode] = useState<SceneViewMode>('grid');
   const [downloadError, setDownloadError] = useState('');
+  const [storyboardDownloadState, setStoryboardDownloadState] = useState<'idle' | 'downloading'>('idle');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>(savedBreakdown ? 'saved' : 'idle');
   const [saveMessage, setSaveMessage] = useState('');
   const breakdownQuery = useGetVideoBreakdown(videoId, {
@@ -380,9 +425,6 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
   });
   const framesQuery = useDownloadFrames(videoId, {
     query: { enabled: false, queryKey: getDownloadFramesQueryKey(videoId) },
-  });
-  const storyboardQuery = useDownloadStoryboard(videoId, {
-    query: { enabled: false, queryKey: getDownloadStoryboardQueryKey(videoId) },
   });
   const breakdown = savedBreakdown ?? breakdownQuery.data;
 
@@ -407,18 +449,27 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
       setDownloadError('Frames could not be prepared right now.');
     }
   };
-  const handleDownloadStoryboard = async () => {
+  const handleDownloadScene = async (scene: SceneFrame) => {
     setDownloadError('');
     try {
-      if (savedBreakdown) {
-        const result = await fetch(savedBreakdown.storyboardUrl);
-        downloadBlob(await result.blob(), `${breakdown?.filename ?? 'scene-breakdown'}-storyboard.jpg`);
-        return;
-      }
-      const result = await storyboardQuery.refetch();
-      if (result.data) downloadBlob(result.data, `${breakdown?.filename ?? 'scene-breakdown'}-storyboard.jpg`);
+      const result = await fetch(new URL(scene.imageUrl, window.location.origin));
+      if (!result.ok) throw new Error('The scene image could not be downloaded.');
+      downloadBlob(await result.blob(), `${breakdown?.filename ?? 'scene-breakdown'}-scene-${scene.index}.jpg`);
     } catch {
-      setDownloadError('The storyboard could not be prepared right now.');
+      setDownloadError('The scene image could not be downloaded right now.');
+    }
+  };
+  const handleDownloadStoryboard = async () => {
+    setDownloadError('');
+    if (!breakdown) return;
+    setStoryboardDownloadState('downloading');
+    try {
+      const filename = `${breakdown.filename.replace(/\.[^.]+$/, '') || 'scene-breakdown'}-storyboard.png`;
+      await downloadContactSheet(breakdown.scenes, filename);
+    } catch {
+      setDownloadError('The storyboard could not be downloaded right now.');
+    } finally {
+      setStoryboardDownloadState('idle');
     }
   };
 
@@ -450,7 +501,8 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
   }
 
   const scenes = breakdown.scenes ?? [];
-  const activeScene = selectedScene ?? scenes[0] ?? null;
+  const orderedScenes = [...scenes].sort((left, right) => left.index - right.index);
+  const activeScene = selectedScene ?? orderedScenes[0] ?? null;
 
   return (
     <div className="app-frame">
@@ -466,8 +518,8 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
             {!savedBreakdown && <button type="button" className="secondary-action" onClick={() => void handleSave()} disabled={saveState === 'saving'} data-testid="button-save-breakdown">
               {saveState === 'saving' ? <LoaderCircle className="animate-spin" size={15} /> : <Bookmark size={15} />} {saveState === 'saved' ? 'Saved' : 'Save'}
             </button>}
-            <button type="button" className="secondary-action" onClick={handleDownloadStoryboard} disabled={storyboardQuery.isFetching} data-testid="button-download-storyboard">
-              {storyboardQuery.isFetching ? <LoaderCircle className="animate-spin" size={15} /> : <ImageDown size={15} />} Storyboard
+            <button type="button" className="secondary-action" onClick={handleDownloadStoryboard} disabled={storyboardDownloadState === 'downloading'} data-testid="button-download-storyboard">
+              {storyboardDownloadState === 'downloading' ? <LoaderCircle className="animate-spin" size={15} /> : <ImageDown size={15} />} Download Storyboard
             </button>
             {!savedBreakdown && <button type="button" className="primary-action small-action" onClick={handleDownloadFrames} disabled={framesQuery.isFetching} data-testid="button-download-frames">
               {framesQuery.isFetching ? <LoaderCircle className="animate-spin" size={15} /> : <Download size={15} />} Export frames
@@ -532,10 +584,22 @@ export function BreakdownPage({ videoId, savedBreakdown }: { videoId: string; sa
                 <p>This footage reads as one continuous visual moment.</p>
               </div>
             ) : viewMode === 'contact-sheet' ? (
-              <StoryPanel scenes={scenes} selectedScene={activeScene} onSelect={handleSceneSelect} />
+              <StoryPanel scenes={orderedScenes} selectedScene={activeScene} onSelect={handleSceneSelect} />
             ) : (
               <div className={`scene-list scene-list-${viewMode}`} data-testid="list-scenes">
-                {scenes.map((scene) => <SceneCard key={scene.id} scene={scene} selected={activeScene?.id === scene.id} onSelect={handleSceneSelect} />)}
+                {viewMode === 'storyboard'
+                  ? orderedScenes.map((scene) => (
+                    <StoryboardSceneCard
+                      key={scene.id}
+                      scene={scene}
+                      selected={activeScene?.id === scene.id}
+                      onSelect={handleSceneSelect}
+                      onDownload={(selected) => void handleDownloadScene(selected)}
+                    />
+                  ))
+                  : orderedScenes.map((scene) => (
+                    <SceneCard key={scene.id} scene={scene} selected={activeScene?.id === scene.id} onSelect={handleSceneSelect} />
+                  ))}
               </div>
             )}
           </aside>
