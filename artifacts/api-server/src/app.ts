@@ -34,7 +34,7 @@ app.use("/api", router);
 
 const frontendDist = path.resolve(process.cwd(), "public");
 app.use(express.static(frontendDist));
-app.get("*", (req, res) => {
+app.get("/{*splat}", (req, res) => {
   res.sendFile(path.join(frontendDist, "index.html"));
 });
 
