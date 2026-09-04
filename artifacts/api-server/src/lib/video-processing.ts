@@ -126,6 +126,8 @@ async function findSceneChanges(inputPath: string, duration: number) {
         "-hide_banner",
         "-loglevel",
         "info",
+         "-skip_frame",
+         "noref",
         "-i",
         inputPath,
         "-filter:v",
