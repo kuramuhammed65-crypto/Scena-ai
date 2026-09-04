@@ -129,7 +129,11 @@ function UploadIllustration() {
   );
 }
 
-function ProcessingState({ file }: { file: File }) {
+function ProcessingState({ file, elapsedSeconds }: { file: File; elapsedSeconds: number }) {
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  const elapsedLabel = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
   return (
     <div className="processing-stage" data-testid="status-processing">
       <div className="processing-topline">
@@ -150,8 +154,11 @@ function ProcessingState({ file }: { file: File }) {
       </div>
       <div className="processing-foot">
         <span>SHOT DETECTION</span>
-        <span className="processing-pulse">WORKING</span>
+        <span className="processing-pulse" data-testid="text-elapsed-time">WORKING &middot; {elapsedLabel}</span>
       </div>
+      <p className="processing-note" data-testid="text-keep-open-warning">
+        Longer videos can take a minute or more. Please keep this tab open and your screen on until it finishes.
+      </p>
     </div>
   );
 }
@@ -161,8 +168,47 @@ export function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const processVideo = useProcessVideo();
+
+  useEffect(() => {
+    if (!processVideo.isPending) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [processVideo.isPending]);
+
+  useEffect(() => {
+    if (!processVideo.isPending) return;
+    if (!('wakeLock' in navigator)) return;
+
+    let cancelled = false;
+    navigator.wakeLock
+      .request('screen')
+      .then((sentinel) => {
+        if (cancelled) {
+          void sentinel.release();
+          return;
+        }
+        wakeLockRef.current = sentinel;
+      })
+      .catch(() => {
+        // Wake lock is a best-effort enhancement; ignore if unsupported or denied.
+      });
+
+    return () => {
+      cancelled = true;
+      wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+    };
+  }, [processVideo.isPending]);
 
   const chooseFile = (candidate?: File) => {
     if (!candidate) return;
@@ -204,7 +250,7 @@ export function UploadPage() {
       <div className="app-frame">
         <AppHeader />
         <main className="studio-shell">
-          <ProcessingState file={file} />
+          <ProcessingState file={file} elapsedSeconds={elapsedSeconds} />
         </main>
         <footer className="studio-footer">
           <span>SCENEBREAKDOWN / ANALYZING VISUAL RHYTHM</span>

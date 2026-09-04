@@ -152,6 +152,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid hsl(var(--primary
 .processing-copy { max-width: 420px; margin: 24px 0 0; color: hsl(var(--muted-foreground)); font-size: 14px; line-height: 1.7; } .processing-copy strong { color: hsl(var(--foreground)); font-weight: 600; }
 .progress-track { height: 3px; overflow: hidden; margin-top: 54px; background: hsl(var(--border)); } .progress-fill { width: 32%; height: 100%; background: hsl(var(--primary)); animation: progress 2.5s ease-in-out infinite; }
 .processing-foot { margin-top: 12px; color: hsl(var(--muted-foreground)); } .processing-pulse { color: hsl(var(--primary)); animation: blink 1.3s ease-in-out infinite; }
+.processing-note { margin-top: 14px; font-size: 12.5px; line-height: 1.5; color: hsl(var(--muted-foreground)); text-align: center; }
 
 /* review */
 .breakdown-shell { padding: 42px 0 70px; }
